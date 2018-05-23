@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 #
 # Copyright (c) 2016 Matthew Earl
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 #     The above copyright notice and this permission notice shall be included
 #     in all copies or substantial portions of the Software.
-# 
+#
 #     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
 #     OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
 #     MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
@@ -98,6 +98,8 @@ def euler_to_mat(yaw, pitch, roll):
 
 def pick_colors():
     first = True
+    text_color = random.random()
+    plate_color = random.random()
     while first or plate_color - text_color < 0.3:
         text_color = random.random()
         plate_color = random.random()
@@ -107,7 +109,7 @@ def pick_colors():
     return text_color, plate_color
 
 
-def make_affine_transform(from_shape, to_shape, 
+def make_affine_transform(from_shape, to_shape,
                           min_scale, max_scale,
                           scale_variation=1.0,
                           rotation_variation=1.0,
@@ -158,14 +160,13 @@ def make_affine_transform(from_shape, to_shape,
 
 
 def generate_code():
-    return "{}{}{}{} {}{}{}".format(
+    return "{}{}{} {}{}{}".format(
+        random.choice(common.LETTERS),
         random.choice(common.LETTERS),
         random.choice(common.LETTERS),
         random.choice(common.DIGITS),
         random.choice(common.DIGITS),
-        random.choice(common.LETTERS),
-        random.choice(common.LETTERS),
-        random.choice(common.LETTERS))
+        random.choice(common.DIGITS))
 
 
 def rounded_rect(shape, radius):
@@ -184,9 +185,9 @@ def rounded_rect(shape, radius):
 
 
 def generate_plate(font_height, char_ims):
-    h_padding = random.uniform(0.2, 0.4) * font_height
-    v_padding = random.uniform(0.1, 0.3) * font_height
-    spacing = font_height * random.uniform(-0.05, 0.05)
+    h_padding = random.uniform(0.3, 0.8) * font_height
+    v_padding = random.uniform(0.1, 0.2) * font_height
+    spacing = font_height * random.uniform(-0.05, 0.08)
     radius = 1 + int(font_height * 0.1 * random.random())
 
     code = generate_code()
@@ -197,11 +198,11 @@ def generate_plate(font_height, char_ims):
                  int(text_width + h_padding * 2))
 
     text_color, plate_color = pick_colors()
-    
+
     text_mask = numpy.zeros(out_shape)
-    
+
     x = h_padding
-    y = v_padding 
+    y = v_padding
     for c in code:
         char_im = char_ims[c]
         ix, iy = int(x), int(y)
@@ -218,10 +219,13 @@ def generate_bg(num_bg_images):
     found = False
     while not found:
         fname = "bgs/{:08d}.jpg".format(random.randint(0, num_bg_images - 1))
-        bg = cv2.imread(fname, cv2.CV_LOAD_IMAGE_GRAYSCALE) / 255.
-        if (bg.shape[1] >= OUTPUT_SHAPE[1] and
-            bg.shape[0] >= OUTPUT_SHAPE[0]):
-            found = True
+        try:
+            bg = cv2.imread(fname, cv2.IMREAD_GRAYSCALE) / 255.
+            if (bg.shape[1] >= OUTPUT_SHAPE[1] and
+                bg.shape[0] >= OUTPUT_SHAPE[0]):
+                found = True
+        except:
+            continue
 
     x = random.randint(0, bg.shape[1] - OUTPUT_SHAPE[1])
     y = random.randint(0, bg.shape[0] - OUTPUT_SHAPE[0])
@@ -234,7 +238,7 @@ def generate_im(char_ims, num_bg_images):
     bg = generate_bg(num_bg_images)
 
     plate, plate_mask, code = generate_plate(FONT_HEIGHT, char_ims)
-    
+
     M, out_of_bounds = make_affine_transform(
                             from_shape=plate.shape,
                             to_shape=bg.shape,
@@ -274,7 +278,7 @@ def generate_ims():
         Iterable of number plate images.
 
     """
-    variation = 1.0
+    #variation = 1.0
     fonts, font_char_ims = load_fonts(FONT_DIR)
     num_bg_images = len(os.listdir("bgs"))
     while True:
@@ -287,6 +291,6 @@ if __name__ == "__main__":
     for img_idx, (im, c, p) in enumerate(im_gen):
         fname = "test/{:08d}_{}_{}.png".format(img_idx, c,
                                                "1" if p else "0")
-        print fname
+        print(fname)
         cv2.imwrite(fname, im * 255.)
 
