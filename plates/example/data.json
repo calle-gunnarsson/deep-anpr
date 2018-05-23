@@ -1,0 +1,16 @@
+{
+    "enabled": 0,
+    "country": "se",
+    "name": "Swedish 1990",
+    "formats": [
+        {
+            "format": "{}{}{} {}{}{}",
+            "offset": [30, 2]
+        },
+        {
+            "format": "{}{}{}  {}{}{}",
+            "offset": [20, 2]
+        }
+    ],
+    "size": 64
+}

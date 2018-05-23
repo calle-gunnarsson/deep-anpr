@@ -1,17 +1,17 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (c) 2016 Matthew Earl
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 #     The above copyright notice and this permission notice shall be included
 #     in all copies or substantial portions of the Software.
-# 
+#
 #     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
 #     OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
 #     MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
@@ -37,7 +37,6 @@ __all__ = (
 
 
 import collections
-import itertools
 import math
 import sys
 
@@ -47,6 +46,8 @@ import tensorflow as tf
 
 import common
 import model
+
+import datetime
 
 
 def make_scaled_ims(im, min_shape):
@@ -79,7 +80,7 @@ def detect(im, param_vals):
     """
 
     # Convert the image to various scales.
-    scaled_ims = list(make_scaled_ims(im, model.WINDOW_SHAPE))
+    scaled_ims = list(make_scaled_ims(im, common.IMAGE_SHAPE))
 
     # Load the model which detects number plates over a sliding window.
     x, y, params = model.get_detect_model()
@@ -104,13 +105,13 @@ def detect(im, param_vals):
             letter_probs = (y_val[0,
                                   window_coords[0],
                                   window_coords[1], 1:].reshape(
-                                    7, len(common.CHARS)))
+                                    common.PLATE_LEN, len(common.CHARS)))
             letter_probs = common.softmax(letter_probs)
 
             img_scale = float(im.shape[0]) / scaled_im.shape[0]
 
             bbox_tl = window_coords * (8, 4) * img_scale
-            bbox_size = numpy.array(model.WINDOW_SHAPE) * img_scale
+            bbox_size = numpy.array(model.IMAGE_SHAPE) * img_scale
 
             present_prob = common.sigmoid(
                                y_val[0, window_coords[0], window_coords[1], 0])
@@ -137,7 +138,7 @@ def _group_overlapping_rectangles(matches):
                 match_to_group[idx1] = match_to_group[idx2]
                 break
         else:
-            match_to_group[idx1] = num_groups 
+            match_to_group[idx1] = num_groups
             num_groups += 1
 
     groups = collections.defaultdict(list)
@@ -176,6 +177,7 @@ def letter_probs_to_code(letter_probs):
 
 
 if __name__ == "__main__":
+    startTime = datetime.datetime.now()
     im = cv2.imread(sys.argv[1])
     im_gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY) / 255.
 
@@ -184,8 +186,8 @@ if __name__ == "__main__":
 
     for pt1, pt2, present_prob, letter_probs in post_process(
                                                   detect(im_gray, param_vals)):
-        pt1 = tuple(reversed(map(int, pt1)))
-        pt2 = tuple(reversed(map(int, pt2)))
+        pt1 = tuple(reversed(list(map(int, pt1))))
+        pt2 = tuple(reversed(list(map(int, pt2))))
 
         code = letter_probs_to_code(letter_probs)
 
@@ -195,7 +197,7 @@ if __name__ == "__main__":
         cv2.putText(im,
                     code,
                     pt1,
-                    cv2.FONT_HERSHEY_PLAIN, 
+                    cv2.FONT_HERSHEY_PLAIN,
                     1.5,
                     (0, 0, 0),
                     thickness=5)
@@ -203,10 +205,11 @@ if __name__ == "__main__":
         cv2.putText(im,
                     code,
                     pt1,
-                    cv2.FONT_HERSHEY_PLAIN, 
+                    cv2.FONT_HERSHEY_PLAIN,
                     1.5,
                     (255, 255, 255),
                     thickness=2)
 
     cv2.imwrite(sys.argv[3], im)
 
+    print(datetime.datetime.now() - startTime)

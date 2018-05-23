@@ -1,15 +1,15 @@
 # Copyright (c) 2016 Matthew Earl
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 #     The above copyright notice and this permission notice shall be included
 #     in all copies or substantial portions of the Software.
-# 
+#
 #     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
 #     OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
 #     MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
@@ -20,7 +20,7 @@
 
 
 """
-Definition of the neural networks. 
+Definition of the neural networks.
 
 """
 
@@ -28,7 +28,6 @@ Definition of the neural networks.
 __all__ = (
     'get_training_model',
     'get_detect_model',
-    'WINDOW_SHAPE',
 )
 
 
@@ -37,19 +36,35 @@ import tensorflow as tf
 import common
 
 
-WINDOW_SHAPE = (64, 128)
+HEIGHT = common.IMAGE_SHAPE[0]
+WIDTH = common.IMAGE_SHAPE[1]
 
+def variable_summaries(var):
+  """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
+  with tf.name_scope('summaries'):
+    mean = tf.reduce_mean(var)
+    tf.summary.scalar('mean', mean)
+    with tf.name_scope('stddev'):
+      stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+    tf.summary.scalar('stddev', stddev)
+    tf.summary.scalar('max', tf.reduce_max(var))
+    tf.summary.scalar('min', tf.reduce_min(var))
+    #tf.summary.histogram('histogram', var)
 
 # Utility functions
 def weight_variable(shape):
-  initial = tf.truncated_normal(shape, stddev=0.1)
-  return tf.Variable(initial)
-
+  with tf.name_scope('weights'):
+    initial = tf.truncated_normal(shape, stddev=0.1)
+    var = tf.Variable(initial, name="W")
+    variable_summaries(var)
+  return var
 
 def bias_variable(shape):
-  initial = tf.constant(0.1, shape=shape)
-  return tf.Variable(initial)
-
+  with tf.name_scope('biases'):
+    initial = tf.constant(0.1, shape=shape)
+    var = tf.Variable(initial, name="B")
+    variable_summaries(var)
+  return var
 
 def conv2d(x, W, stride=(1, 1), padding='SAME'):
   return tf.nn.conv2d(x, W, strides=[1, stride[0], stride[1], 1],
@@ -61,38 +76,51 @@ def max_pool(x, ksize=(2, 2), stride=(2, 2)):
                         strides=[1, stride[0], stride[1], 1], padding='SAME')
 
 
-def avg_pool(x, ksize=(2, 2), stride=(2, 2)):
-  return tf.nn.avg_pool(x, ksize=[1, ksize[0], ksize[1], 1],
-                        strides=[1, stride[0], stride[1], 1], padding='SAME')
+def conv_layer(input, size_in, size_out, ksize=(2, 2), stride=(2, 2), padding="SAME", name="conv"):
+  with tf.name_scope(name):
+    w = weight_variable([5, 5, size_in, size_out])
+    b = bias_variable([size_out])
+    act = tf.nn.relu(conv2d(input, w) + b)
 
+    #tf.summary.histogram("weights", w)
+    #tf.summary.histogram("biases", b)
+    #tf.summary.histogram("activations", act)
+
+    return max_pool(act, ksize=ksize, stride=stride), w ,b
+
+def fc_layer(input, w_shape, b_shape, name="fc"):
+  with tf.name_scope(name):
+    w = weight_variable(w_shape)
+    b = bias_variable(b_shape)
+    act = tf.matmul(input, w) + b
+
+    #tf.summary.histogram("weights", w)
+    #tf.summary.histogram("biases", b)
+    #tf.summary.histogram("activations", act)
+
+    return (act, w, b)
 
 def convolutional_layers():
     """
     Get the convolutional layers of the model.
 
     """
-    x = tf.placeholder(tf.float32, [None, None, None])
+    IN = 1
+    OUT = 48
+
+    x = tf.placeholder(tf.float32, [None, None, None], name="x")
+    x_image = tf.reshape(x, [-1, HEIGHT, WIDTH, 1])
+
+    tf.summary.image('input', x_image, 25)
 
     # First layer
-    W_conv1 = weight_variable([5, 5, 1, 48])
-    b_conv1 = bias_variable([48])
-    x_expanded = tf.expand_dims(x, 3)
-    h_conv1 = tf.nn.relu(conv2d(x_expanded, W_conv1) + b_conv1)
-    h_pool1 = max_pool(h_conv1, ksize=(2, 2), stride=(2, 2))
+    h_pool1, W_conv1, b_conv1 = conv_layer(x_image, IN, OUT, name="layer1")
 
     # Second layer
-    W_conv2 = weight_variable([5, 5, 48, 64])
-    b_conv2 = bias_variable([64])
-
-    h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
-    h_pool2 = max_pool(h_conv2, ksize=(2, 1), stride=(2, 1))
+    h_pool2, W_conv2, b_conv2 = conv_layer(h_pool1, OUT, HEIGHT, ksize=(2, 1), stride=(2, 1), name="layer2")
 
     # Third layer
-    W_conv3 = weight_variable([5, 5, 64, 128])
-    b_conv3 = bias_variable([128])
-
-    h_conv3 = tf.nn.relu(conv2d(h_pool2, W_conv3) + b_conv3)
-    h_pool3 = max_pool(h_conv3, ksize=(2, 2), stride=(2, 2))
+    h_pool3, W_conv3, b_conv3 = conv_layer(h_pool2, HEIGHT, WIDTH, name="layer3")
 
     return x, h_pool3, [W_conv1, b_conv1,
                         W_conv2, b_conv2,
@@ -101,54 +129,58 @@ def convolutional_layers():
 
 def get_training_model():
     """
-    The training model acts on a batch of 128x64 windows, and outputs a (1 +
-    7 * len(common.CHARS) vector, `v`. `v[0]` is the probability that a plate is
+    The training model acts on a batch of WIDTHxHEIGHT windows, and outputs a (1 +
+    common.PLATE_LEN * len(common.CHARS) vector, `v`. `v[0]` is the probability that a plate is
     fully within the image and is at the correct scale.
-    
+
     `v[1 + i * len(common.CHARS) + c]` is the probability that the `i`'th
     character is `c`.
 
     """
     x, conv_layer, conv_vars = convolutional_layers()
-    
-    # Densely connected layer
-    W_fc1 = weight_variable([32 * 8 * 128, 2048])
-    b_fc1 = bias_variable([2048])
 
-    conv_layer_flat = tf.reshape(conv_layer, [-1, 32 * 8 * 128])
-    h_fc1 = tf.nn.relu(tf.matmul(conv_layer_flat, W_fc1) + b_fc1)
 
-    # Output layer
-    W_fc2 = weight_variable([2048, 1 + 7 * len(common.CHARS)])
-    b_fc2 = bias_variable([1 + 7 * len(common.CHARS)])
+    conv_layer_flat = tf.reshape(conv_layer, [-1, 32 * 8 * WIDTH])
 
-    y = tf.matmul(h_fc1, W_fc2) + b_fc2
+    fc1, W_fc1, b_fc1 = fc_layer(conv_layer_flat,
+                                 [32 * 8 * WIDTH, 2048],
+                                 [2048],
+                                 name="densely_connected_layer")
+    h_fc1 = tf.nn.relu(fc1)
+    #tf.summary.histogram('h_fc1', h_fc1)
 
-    return (x, y, conv_vars + [W_fc1, b_fc1, W_fc2, b_fc2])
+    keep_prob = tf.placeholder(tf.float32, name="keep_prob")
+    h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
+    #tf.summary.histogram('h_fc1_drop', h_fc1)
+
+    y, W_fc2, b_fc2 = fc_layer(h_fc1_drop,
+                               [2048, 1 + common.PLATE_LEN * len(common.CHARS)],
+                               [1 + common.PLATE_LEN * len(common.CHARS)],
+                               name="output_layer")
+
+    return (x, y, conv_vars + [W_fc1, b_fc1, W_fc2, b_fc2], keep_prob)
 
 
 def get_detect_model():
     """
     The same as the training model, except it acts on an arbitrarily sized
-    input, and slides the 128x64 window across the image in 8x8 strides.
+    input, and slides the WIDTHxHEIGHT window across the image in 8x8 strides.
 
     The output is of the form `v`, where `v[i, j]` is equivalent to the output
     of the training model, for the window at coordinates `(8 * i, 4 * j)`.
 
     """
     x, conv_layer, conv_vars = convolutional_layers()
-    
+
     # Fourth layer
-    W_fc1 = weight_variable([8 * 32 * 128, 2048])
-    W_conv1 = tf.reshape(W_fc1, [8,  32, 128, 2048])
+    W_fc1 = weight_variable([8 * 32 * WIDTH, 2048])
+    W_conv1 = tf.reshape(W_fc1, [8,  32, WIDTH, 2048])
     b_fc1 = bias_variable([2048])
-    h_conv1 = tf.nn.relu(conv2d(conv_layer, W_conv1,
-                                stride=(1, 1), padding="VALID") + b_fc1) 
+    h_conv1 = tf.nn.relu(conv2d(conv_layer, W_conv1,padding="VALID") + b_fc1)
     # Fifth layer
-    W_fc2 = weight_variable([2048, 1 + 7 * len(common.CHARS)])
-    W_conv2 = tf.reshape(W_fc2, [1, 1, 2048, 1 + 7 * len(common.CHARS)])
-    b_fc2 = bias_variable([1 + 7 * len(common.CHARS)])
+    W_fc2 = weight_variable([2048, 1 + common.PLATE_LEN * len(common.CHARS)])
+    W_conv2 = tf.reshape(W_fc2, [1, 1, 2048, 1 + common.PLATE_LEN * len(common.CHARS)])
+    b_fc2 = bias_variable([1 + common.PLATE_LEN * len(common.CHARS)])
     h_conv2 = conv2d(h_conv1, W_conv2) + b_fc2
 
     return (x, h_conv2, conv_vars + [W_fc1, b_fc1, W_fc2, b_fc2])
-

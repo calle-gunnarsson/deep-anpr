@@ -1,0 +1,10 @@
+*.pyc
+*.gz
+fonts/*
+test/*
+bgs/*
+weights*.npz
+.DS_Store
+*.jpg
+*.png
+summaries
