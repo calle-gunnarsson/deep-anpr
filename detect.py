@@ -87,7 +87,6 @@ def detect(im, param_vals):
 
     # Execute the model at each scale.
     with tf.Session(config=tf.ConfigProto()) as sess:
-        print("Session start")
         y_vals = []
         for scaled_im in scaled_ims:
             feed_dict = {x: numpy.stack([scaled_im])}
