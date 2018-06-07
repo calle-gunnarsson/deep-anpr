@@ -7,4 +7,7 @@ weights*.npz
 .DS_Store
 *.jpg
 *.png
-summaries
+summaries/*
+models/*
+.vscode
+plates/*

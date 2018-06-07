@@ -28,6 +28,7 @@ Definition of the neural networks.
 __all__ = (
     'get_training_model',
     'get_detect_model',
+    'variable_summaries',
 )
 
 
@@ -82,23 +83,15 @@ def conv_layer(input, size_in, size_out, ksize=(2, 2), stride=(2, 2), padding="S
     b = bias_variable([size_out])
     act = tf.nn.relu(conv2d(input, w) + b)
 
-    #tf.summary.histogram("weights", w)
-    #tf.summary.histogram("biases", b)
-    #tf.summary.histogram("activations", act)
+    return max_pool(act, ksize=ksize, stride=stride)
 
-    return max_pool(act, ksize=ksize, stride=stride), w ,b
-
-def fc_layer(input, w_shape, b_shape, name="fc"):
+def fc_layer(input, w_shape, b_shape, name="dense"):
   with tf.name_scope(name):
     w = weight_variable(w_shape)
     b = bias_variable(b_shape)
     act = tf.matmul(input, w) + b
-
-    #tf.summary.histogram("weights", w)
-    #tf.summary.histogram("biases", b)
     #tf.summary.histogram("activations", act)
-
-    return (act, w, b)
+    return act
 
 def convolutional_layers():
     """
@@ -114,17 +107,15 @@ def convolutional_layers():
     tf.summary.image('input', x_image, 25)
 
     # First layer
-    h_pool1, W_conv1, b_conv1 = conv_layer(x_image, IN, OUT, name="layer1")
+    pool1 = conv_layer(x_image, IN, OUT, name="layer1")
 
     # Second layer
-    h_pool2, W_conv2, b_conv2 = conv_layer(h_pool1, OUT, HEIGHT, ksize=(2, 1), stride=(2, 1), name="layer2")
+    pool2 = conv_layer(pool1, OUT, HEIGHT, ksize=(2, 1), stride=(2, 1), name="layer2")
 
     # Third layer
-    h_pool3, W_conv3, b_conv3 = conv_layer(h_pool2, HEIGHT, WIDTH, name="layer3")
+    pool3 = conv_layer(pool2, HEIGHT, WIDTH, name="layer3")
 
-    return x, h_pool3, [W_conv1, b_conv1,
-                        W_conv2, b_conv2,
-                        W_conv3, b_conv3]
+    return (x, pool3)
 
 
 def get_training_model():
@@ -137,12 +128,12 @@ def get_training_model():
     character is `c`.
 
     """
-    x, conv_layer, conv_vars = convolutional_layers()
+    x, conv_layer = convolutional_layers()
 
 
     conv_layer_flat = tf.reshape(conv_layer, [-1, 32 * 8 * WIDTH])
 
-    fc1, W_fc1, b_fc1 = fc_layer(conv_layer_flat,
+    fc1 = fc_layer(conv_layer_flat,
                                  [32 * 8 * WIDTH, 2048],
                                  [2048],
                                  name="densely_connected_layer")
@@ -153,12 +144,12 @@ def get_training_model():
     h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
     #tf.summary.histogram('h_fc1_drop', h_fc1)
 
-    y, W_fc2, b_fc2 = fc_layer(h_fc1_drop,
-                               [2048, 1 + common.PLATE_LEN * len(common.CHARS)],
-                               [1 + common.PLATE_LEN * len(common.CHARS)],
-                               name="output_layer")
+    y = fc_layer(h_fc1_drop,
+                 [2048, 1 + common.PLATE_LEN * len(common.CHARS)],
+                 [1 + common.PLATE_LEN * len(common.CHARS)],
+                 name="output_layer")
 
-    return (x, y, conv_vars + [W_fc1, b_fc1, W_fc2, b_fc2], keep_prob)
+    return (x, y, keep_prob)
 
 
 def get_detect_model():
@@ -170,7 +161,7 @@ def get_detect_model():
     of the training model, for the window at coordinates `(8 * i, 4 * j)`.
 
     """
-    x, conv_layer, conv_vars = convolutional_layers()
+    x, conv_layer = convolutional_layers()
 
     # Fourth layer
     W_fc1 = weight_variable([8 * 32 * WIDTH, 2048])
@@ -183,4 +174,4 @@ def get_detect_model():
     b_fc2 = bias_variable([1 + common.PLATE_LEN * len(common.CHARS)])
     h_conv2 = conv2d(h_conv1, W_conv2) + b_fc2
 
-    return (x, h_conv2, conv_vars + [W_fc1, b_fc1, W_fc2, b_fc2])
+    return (x, h_conv2)
