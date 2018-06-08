@@ -87,8 +87,8 @@ def detect(im, model_checkpoint):
 
     # Execute the model at each scale.
     with tf.Session(config=tf.ConfigProto()) as sess:
-        saver = tf.train.import_meta_graph(model_checkpoint)
-        saver.restore(sess,tf.train.latest_checkpoint('./'))
+        saver = tf.train.import_meta_graph(model_checkpoint + '.meta')
+        saver.restore(sess, model_checkpoint)
         y_vals = []
         for scaled_im in scaled_ims:
             feed_dict = {x: numpy.stack([scaled_im])}

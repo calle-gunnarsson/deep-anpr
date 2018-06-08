@@ -106,16 +106,16 @@ def convolutional_layers():
 
     tf.summary.image('input', x_image, 25)
 
-    # First layer
-    pool1 = conv_layer(x_image, IN, OUT, name="layer1")
+    # Input Layer
+    input = conv_layer(x_image, IN, OUT, name="input_layer")
 
     # Second layer
-    pool2 = conv_layer(pool1, OUT, HEIGHT, ksize=(2, 1), stride=(2, 1), name="layer2")
+    conv1 = conv_layer(input, OUT, HEIGHT, ksize=(2, 1), stride=(2, 1), name="conv_layer1")
 
     # Third layer
-    pool3 = conv_layer(pool2, HEIGHT, WIDTH, name="layer3")
+    conv2 = conv_layer(conv1, HEIGHT, WIDTH, name="conv_layer2")
 
-    return (x, pool3)
+    return (x, conv2)
 
 
 def get_training_model():
@@ -133,18 +133,18 @@ def get_training_model():
 
     conv_layer_flat = tf.reshape(conv_layer, [-1, 32 * 8 * WIDTH])
 
-    fc1 = fc_layer(conv_layer_flat,
+    dense1 = fc_layer(conv_layer_flat,
                                  [32 * 8 * WIDTH, 2048],
                                  [2048],
-                                 name="densely_connected_layer")
-    h_fc1 = tf.nn.relu(fc1)
+                                 name="dense_layer1")
+    h_dense1 = tf.nn.relu(dense1)
     #tf.summary.histogram('h_fc1', h_fc1)
 
     keep_prob = tf.placeholder(tf.float32, name="keep_prob")
-    h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
+    h_drop = tf.nn.dropout(h_dense1, keep_prob, name="dropout")
     #tf.summary.histogram('h_fc1_drop', h_fc1)
 
-    y = fc_layer(h_fc1_drop,
+    y = fc_layer(h_drop,
                  [2048, 1 + common.PLATE_LEN * len(common.CHARS)],
                  [1 + common.PLATE_LEN * len(common.CHARS)],
                  name="output_layer")

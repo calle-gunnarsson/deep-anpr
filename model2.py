@@ -82,20 +82,20 @@ def convolutional_layers():
     OUT = 48
 
     x = tf.placeholder(tf.float32, [None, None, None], name="x")
-    x_image = tf.reshape(x, [-1, HEIGHT, WIDTH, 1])
 
+    x_image = tf.expand_dims(x, 3)
     tf.summary.image('input', x_image, 25)
 
     # First layer
-    pool1  = conv2d_layer(x_image, OUT, name="layer1")
+    input = conv2d_layer(x_image, OUT, name="input_layer")
 
     # Second layer
-    pool2 = conv2d_layer(pool1, HEIGHT, pool_size=(2, 1), stride=(2, 1), name="layer2")
+    conv1 = conv2d_layer(input, HEIGHT, pool_size=(2, 1), stride=(2, 1), name="conv_layer1")
 
     # Third layer
-    pool3 = conv2d_layer(pool2, WIDTH, name="layer3")
+    conv2 = conv2d_layer(conv1, WIDTH, name="conv_layer2")
 
-    return x, pool3
+    return x, conv2
 
 
 def get_training_model():
@@ -112,11 +112,11 @@ def get_training_model():
 
     conv_layer_flat = tf.reshape(conv_layer, [-1, 32 * 8 * WIDTH])
 
-    dense = dense_layer(conv_layer_flat, 2048, name="densely_connected_layer")
+    dense1 = dense_layer(conv_layer_flat, 2048, name="dense_layer1")
     #tf.summary.histogram('dense', dense)
 
     training = tf.placeholder(tf.bool, name="training")
-    dropout = tf.layers.dropout(d1, rate=0.4, training=training, name="dropout")
+    dropout = tf.layers.dropout(dense1, rate=0.4, training=training, name="dropout")
     #tf.summary.histogram('dropout', dropout)
 
     y = dense_layer(dropout, 1 + common.PLATE_LEN * len(common.CHARS), name="output_layer")

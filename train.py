@@ -129,30 +129,6 @@ def get_loss(y, y_):
     #tf.summary.histogram('p_logits', p_logits) 
     return digits_loss, presence_loss, digits_loss + presence_loss
 
-def print_report(batch_idx, r):
-    num_correct = numpy.sum(
-                    numpy.logical_or(
-                        numpy.all(r[0] == r[1], axis=1),
-                        numpy.logical_and(r[2] < 0.5,
-                                            r[3] < 0.5)))
-
-    r_short = (r[0][:190], r[1][:190], r[2][:190], r[3][:190])
-    for b, c, pb, pc in zip(*r_short):
-        is_match = numpy.array_equal(b, c) or (not pb and not pc) 
-        print("{} {} <-> {} {} {}".format(vec_to_code(c), pc,
-                                        vec_to_code(b), float(pb), "*" if is_match else ''))
-    num_p_correct = numpy.sum(r[2] == r[3])
-
-    print ("B{:3d} {:2.02f}% {:02.02f}% loss: {} (digits: {}, presence: {}) |{}|".format(
-        batch_idx,
-        100. * num_correct / (len(r[0])),
-        100. * num_p_correct / len(r[2]),
-        r[6],
-        r[4],
-        r[5],
-        "".join("X "[numpy.array_equal(b, c) or (not pb and not pc)]
-                                        for b, c, pb, pc in zip(*r_short))))
-
 def train(learn_rate, report_steps, batch_size, initial_model=None, max_steps=0):
     tf.reset_default_graph()
 
@@ -184,6 +160,32 @@ def train(learn_rate, report_steps, batch_size, initial_model=None, max_steps=0)
     test_xs, test_ys = unzip(list(read_data(os.path.join("test2","*.png")))[:batch_size])
     validation_xs, validation_ys = unzip(list(read_data(os.path.join("test3","*.png")))[:batch_size])
 
+    def print_report(r):
+        num_correct = numpy.sum(
+                        numpy.logical_or(
+                            numpy.all(r[0] == r[1], axis=1),
+                            numpy.logical_and(r[2] < 0.5,
+                                                r[3] < 0.5)))
+
+        r_short = (r[0][:190], r[1][:190], r[2][:190], r[3][:190])
+        for b, c, pb, pc in zip(*r_short):
+            is_match = numpy.array_equal(b, c) or (not pb and not pc) 
+            print("{} {} <-> {} {} {}".format(vec_to_code(c), pc,
+                                            vec_to_code(b), float(pb), "*" if is_match else ''))
+        num_p_correct = numpy.sum(r[2] == r[3])
+
+        print ("B{:3d} {:2.02f}% {:02.02f}% loss: {} (digits: {}, presence: {}) |{}|".format(
+            batch_idx,
+            100. * num_correct / (len(r[0])),
+            100. * num_p_correct / len(r[2]),
+            r[6],
+            r[4],
+            r[5],
+            "".join("X "[numpy.array_equal(b, c) or (not pb and not pc)]
+                                            for b, c, pb, pc in zip(*r_short))))
+        return
+
+
     #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.95)
     gpu_options = tf.GPUOptions(allow_growth=True)
     with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
@@ -199,6 +201,9 @@ def train(learn_rate, report_steps, batch_size, initial_model=None, max_steps=0)
         try:
             batch_iter = enumerate(read_batches2(batch_size))
             for batch_idx, (batch_xs, batch_ys) in batch_iter:
+                summary, _ = sess.run([merged, train_step], feed_dict={x: batch_xs, y_: batch_ys, keep_prob: 0.40})
+                train_writer.add_summary(summary, batch_idx)
+
                 if batch_idx % report_steps == 0:
                     r = sess.run([merged, best, correct,
                                 tf.greater(y[:, 0], 0),
@@ -211,7 +216,7 @@ def train(learn_rate, report_steps, batch_size, initial_model=None, max_steps=0)
                     summary = r.pop(0)
                     test_writer.add_summary(summary, batch_idx)
 
-                    print_report(batch_idx, r)
+                    print_report(r)
                     batch_time = time.time()
                     if last_batch_idx != batch_idx:
                         print("time for {} batches {}".format(batch_size,
@@ -219,9 +224,6 @@ def train(learn_rate, report_steps, batch_size, initial_model=None, max_steps=0)
                                             (last_batch_idx - batch_idx)))
                         last_batch_idx = batch_idx
                         last_batch_time = batch_time
-
-                summary, _ = sess.run([merged, train_step], feed_dict={x: batch_xs, y_: batch_ys, keep_prob: 0.40})
-                train_writer.add_summary(summary, batch_idx)
 
                 if max_steps != 0 and batch_idx >= max_steps:
                     raise KeyboardInterrupt
@@ -236,7 +238,7 @@ def train(learn_rate, report_steps, batch_size, initial_model=None, max_steps=0)
                         feed_dict={x: validation_xs, y_: validation_ys, keep_prob: 1.0})
 
             print("VALIDATION")
-            print_report(0, r)
+            print_report(r)
             try:
                 print("Saving...")
                 fpath = os.path.join(MODELS_PATH, 'model_{0:%Y%m%dT%H%M%S}.ckpt'.format(datetime.datetime.now()))
@@ -257,7 +259,7 @@ if __name__ == "__main__":
         os.mkdir(MODELS_PATH)
 
     train(learn_rate=0.001,
-        report_steps=500,
-        batch_size=100,
+        report_steps=50,
+        batch_size=150,
         initial_model=initial_model,
         max_steps=500000)
