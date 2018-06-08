@@ -190,8 +190,8 @@ def generate_im(plate_data, num_bg_images):
     M, out_of_bounds = make_affine_transform(
                             from_shape=(plate.shape[0], plate.shape[1]),
                             to_shape=bg.shape,
-                            min_scale=0.4,
-                            max_scale=1.2,
+                            min_scale=0.5,
+                            max_scale=1.0,
                             rotation_variation=1.0,
                             scale_variation=1.2,
                             translation_variation=1.2)

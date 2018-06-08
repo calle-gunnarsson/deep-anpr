@@ -61,7 +61,7 @@ def make_scaled_ims(im, min_shape):
         yield cv2.resize(im, (shape[1], shape[0]))
 
 
-def detect(im, param_vals):
+def detect(im, model_checkpoint):
     """
     Detect number plates in an image.
 
@@ -83,14 +83,15 @@ def detect(im, param_vals):
     scaled_ims = list(make_scaled_ims(im, common.IMAGE_SHAPE))
 
     # Load the model which detects number plates over a sliding window.
-    x, y, params = model.get_detect_model()
+    x, y = model.get_detect_model()
 
     # Execute the model at each scale.
     with tf.Session(config=tf.ConfigProto()) as sess:
+        saver = tf.train.import_meta_graph(model_checkpoint)
+        saver.restore(sess,tf.train.latest_checkpoint('./'))
         y_vals = []
         for scaled_im in scaled_ims:
             feed_dict = {x: numpy.stack([scaled_im])}
-            feed_dict.update(dict(zip(params, param_vals)))
             y_vals.append(sess.run(y, feed_dict=feed_dict))
 
     # Interpret the results in terms of bounding boxes in the input image.
@@ -111,7 +112,7 @@ def detect(im, param_vals):
             img_scale = float(im.shape[0]) / scaled_im.shape[0]
 
             bbox_tl = window_coords * (8, 4) * img_scale
-            bbox_size = numpy.array(model.IMAGE_SHAPE) * img_scale
+            bbox_size = numpy.array(common.IMAGE_SHAPE) * img_scale
 
             present_prob = common.sigmoid(
                                y_val[0, window_coords[0], window_coords[1], 0])
@@ -181,11 +182,10 @@ if __name__ == "__main__":
     im = cv2.imread(sys.argv[1])
     im_gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY) / 255.
 
-    f = numpy.load(sys.argv[2])
-    param_vals = [f[n] for n in sorted(f.files, key=lambda s: int(s[4:]))]
+    model_checkpoint = sys.argv[2]
 
     for pt1, pt2, present_prob, letter_probs in post_process(
-                                                  detect(im_gray, param_vals)):
+                                                  detect(im_gray, model_checkpoint)):
         pt1 = tuple(reversed(list(map(int, pt1))))
         pt2 = tuple(reversed(list(map(int, pt2))))
 

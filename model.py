@@ -85,7 +85,7 @@ def conv_layer(input, size_in, size_out, ksize=(2, 2), stride=(2, 2), padding="S
 
     return max_pool(act, ksize=ksize, stride=stride)
 
-def fc_layer(input, w_shape, b_shape, name="dense"):
+def fc_layer(input, w_shape, b_shape, name="fc"):
   with tf.name_scope(name):
     w = weight_variable(w_shape)
     b = bias_variable(b_shape)
@@ -102,7 +102,7 @@ def convolutional_layers():
     OUT = 48
 
     x = tf.placeholder(tf.float32, [None, None, None], name="x")
-    x_image = tf.reshape(x, [-1, HEIGHT, WIDTH, 1])
+    x_image = tf.expand_dims(x, 3)
 
     tf.summary.image('input', x_image, 25)
 
