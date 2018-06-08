@@ -39,6 +39,7 @@ __all__ = (
 import collections
 import math
 import sys
+import os
 
 import cv2
 import numpy
@@ -47,8 +48,9 @@ import tensorflow as tf
 import common
 import model
 
-import datetime
+import time
 
+OUTPUT_DIR="results"
 
 def make_scaled_ims(im, min_shape):
     ratio = 1. / 2 ** 0.5
@@ -61,7 +63,7 @@ def make_scaled_ims(im, min_shape):
         yield cv2.resize(im, (shape[1], shape[0]))
 
 
-def detect(im, model_checkpoint):
+def detect(sess, im, model_checkpoint):
     """
     Detect number plates in an image.
 
@@ -81,18 +83,10 @@ def detect(im, model_checkpoint):
 
     # Convert the image to various scales.
     scaled_ims = list(make_scaled_ims(im, common.IMAGE_SHAPE))
-
-    # Load the model which detects number plates over a sliding window.
-    x, y = model.get_detect_model()
-
-    # Execute the model at each scale.
-    with tf.Session(config=tf.ConfigProto()) as sess:
-        saver = tf.train.import_meta_graph(model_checkpoint + '.meta')
-        saver.restore(sess, model_checkpoint)
-        y_vals = []
-        for scaled_im in scaled_ims:
-            feed_dict = {x: numpy.stack([scaled_im])}
-            y_vals.append(sess.run(y, feed_dict=feed_dict))
+    y_vals = []
+    for scaled_im in scaled_ims:
+        feed_dict = {x: numpy.stack([scaled_im])}
+        y_vals.append(sess.run(y, feed_dict=feed_dict))
 
     # Interpret the results in terms of bounding boxes in the input image.
     # Do this by identifying windows (at all scales) where the model predicts a
@@ -177,39 +171,85 @@ def letter_probs_to_code(letter_probs):
     return "".join(common.CHARS[i] for i in numpy.argmax(letter_probs, axis=1))
 
 
+def scale_pt(factor, pt):
+    return (int(pt[0] * factor), int(pt[1] * factor))
+
 if __name__ == "__main__":
-    startTime = datetime.datetime.now()
-    im = cv2.imread(sys.argv[1])
-    im_gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY) / 255.
+    model_checkpoint = sys.argv[1]
 
-    model_checkpoint = sys.argv[2]
+    startTime = time.time()
 
-    for pt1, pt2, present_prob, letter_probs in post_process(
-                                                  detect(im_gray, model_checkpoint)):
-        pt1 = tuple(reversed(list(map(int, pt1))))
-        pt2 = tuple(reversed(list(map(int, pt2))))
+    imgs = sys.argv[2:]
 
-        code = letter_probs_to_code(letter_probs)
+    if not os.path.exists(OUTPUT_DIR):
+        os.mkdir(OUTPUT_DIR)
 
-        color = (0.0, 255.0, 0.0)
-        cv2.rectangle(im, pt1, pt2, color)
+    # Load the model which detects number plates over a sliding window.
+    x, y = model.get_detect_model()
 
-        cv2.putText(im,
-                    code,
-                    pt1,
-                    cv2.FONT_HERSHEY_PLAIN,
-                    1.5,
-                    (0, 0, 0),
-                    thickness=5)
+    saver = tf.train.Saver()
+    # Execute the model at each scale.
+    with tf.Session(config=tf.ConfigProto()) as sess:
+        saver.restore(sess, model_checkpoint)
+        print("Searching for plates in {} images.".format(len(imgs)))
 
-        cv2.putText(im,
-                    code,
-                    pt1,
-                    cv2.FONT_HERSHEY_PLAIN,
-                    1.5,
-                    (255, 255, 255),
-                    thickness=2)
+        for img in imgs:
+            fname = os.path.basename(img).split('.')[0]
+            image = cv2.imread(img)
 
-    cv2.imwrite(sys.argv[3], im)
+            im = cv2.resize(image, (0,0), fx=0.5, fy=0.5)
+            width=im.shape[1]
+            im_gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY) / 255.
 
-    print(datetime.datetime.now() - startTime)
+            i_height, i_width, _ = im.shape
+            b_height, b_width = common.IMAGE_SHAPE
+
+            bpt1 = (int(i_width/2 - b_width/2), int(i_height/2 - b_height/2))
+            bpt2 = (int(i_width/2 + b_width/2), int(i_height/2 + b_height/2))
+
+            factor = image.shape[1] / width
+
+            bpt1 = scale_pt(factor, bpt1)
+            bpt2 = scale_pt(factor, bpt2)
+
+            color = (255.0, 0.0, 0.0)
+            cv2.rectangle(image, bpt1, bpt2, color)
+
+            print(img, end="", flush=True)
+            plates = 0
+            for pt1, pt2, present_prob, letter_probs in post_process(
+                                                        detect(sess, im_gray, model_checkpoint)):
+                plates += 1
+                pt1 = tuple(reversed(list(map(int, pt1))))
+                pt2 = tuple(reversed(list(map(int, pt2))))
+
+                code = letter_probs_to_code(letter_probs)
+
+                pt1 = scale_pt(factor, pt1)
+                pt2 = scale_pt(factor, pt2)
+
+                color = (0.0, 255.0, 0.0)
+                cv2.rectangle(image, pt1, pt2, color)
+
+                cv2.putText(image,
+                            code,
+                            pt1,
+                            cv2.FONT_HERSHEY_PLAIN,
+                            1.5,
+                            (0, 0, 0),
+                            thickness=5)
+
+                cv2.putText(image,
+                            code,
+                            pt1,
+                            cv2.FONT_HERSHEY_PLAIN,
+                            1.5,
+                            (255, 255, 255),
+                            thickness=2)
+
+            if plates > 0:
+                print(" - found {} plates".format(plates), end="", flush=True)
+                cv2.imwrite(os.path.join(OUTPUT_DIR, "{}.png".format(fname)), image)
+            print("")
+    resTime = time.time() - startTime
+    print("Processed {} images in {} seconds (avg: {} sec/img)".format(len(imgs), resTime, int(resTime/len(imgs))))

@@ -98,7 +98,6 @@ def convolutional_layers():
     Get the convolutional layers of the model.
 
     """
-    IN = 1
     OUT = 48
 
     x = tf.placeholder(tf.float32, [None, None, None], name="x")
@@ -107,13 +106,13 @@ def convolutional_layers():
     tf.summary.image('input', x_image, 25)
 
     # Input Layer
-    input = conv_layer(x_image, IN, OUT, name="input_layer")
+    input = conv_layer(x_image, 1, OUT, name="layer1")
 
     # Second layer
-    conv1 = conv_layer(input, OUT, HEIGHT, ksize=(2, 1), stride=(2, 1), name="conv_layer1")
+    conv1 = conv_layer(input, OUT, HEIGHT, ksize=(2, 1), stride=(2, 1), name="layer2")
 
     # Third layer
-    conv2 = conv_layer(conv1, HEIGHT, WIDTH, name="conv_layer2")
+    conv2 = conv_layer(conv1, HEIGHT, WIDTH, name="layer3")
 
     return (x, conv2)
 
@@ -164,14 +163,17 @@ def get_detect_model():
     x, conv_layer = convolutional_layers()
 
     # Fourth layer
-    W_fc1 = weight_variable([8 * 32 * WIDTH, 2048])
-    W_conv1 = tf.reshape(W_fc1, [8,  32, WIDTH, 2048])
-    b_fc1 = bias_variable([2048])
-    h_conv1 = tf.nn.relu(conv2d(conv_layer, W_conv1,padding="VALID") + b_fc1)
-    # Fifth layer
-    W_fc2 = weight_variable([2048, 1 + common.PLATE_LEN * len(common.CHARS)])
-    W_conv2 = tf.reshape(W_fc2, [1, 1, 2048, 1 + common.PLATE_LEN * len(common.CHARS)])
-    b_fc2 = bias_variable([1 + common.PLATE_LEN * len(common.CHARS)])
-    h_conv2 = conv2d(h_conv1, W_conv2) + b_fc2
+    with tf.name_scope("densely_connected_layer"):
+        W_fc1 = weight_variable([8 * 32 * WIDTH, 2048])
+        W_conv1 = tf.reshape(W_fc1, [8,  32, WIDTH, 2048])
+        b_fc1 = bias_variable([2048])
+        h_conv1 = tf.nn.relu(conv2d(conv_layer, W_conv1,padding="VALID") + b_fc1)
+
+    with tf.name_scope("output_layer"):
+        # Fifth layer
+        W_fc2 = weight_variable([2048, 1 + common.PLATE_LEN * len(common.CHARS)])
+        W_conv2 = tf.reshape(W_fc2, [1, 1, 2048, 1 + common.PLATE_LEN * len(common.CHARS)])
+        b_fc2 = bias_variable([1 + common.PLATE_LEN * len(common.CHARS)])
+        h_conv2 = conv2d(h_conv1, W_conv2) + b_fc2
 
     return (x, h_conv2)

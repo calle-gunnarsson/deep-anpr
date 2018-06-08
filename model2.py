@@ -50,19 +50,19 @@ def variable_summaries(var):
     tf.summary.scalar('min', tf.reduce_min(var))
     #tf.summary.histogram('histogram', var)
 
-def dense_layer(input, units, name="dense"):
+def fc_layer(input, units, name="fc", activation=tf.nn.relu):
   with tf.name_scope(name):
-    act = tf.layers.dense(inputs=input, 
-                          units=units, 
+    act = tf.layers.dense(inputs=input,
+                          units=units,
                           kernel_initializer=tf.truncated_normal_initializer(stddev=0.1),
                           bias_initializer=tf.constant_initializer(0.1),
                           name=name,
-                          activation=tf.nn.relu)
+                          activation=activation)
     return act
 
 def conv2d_layer(input, filters, padding="SAME", name="conv2d", pool_size=(2, 2), stride=(2, 2)):
   with tf.name_scope(name):
-    act = tf.layers.conv2d(input, 
+    act = tf.layers.conv2d(input,
                           filters=filters,
                           kernel_size=[5, 5],
                           bias_initializer=tf.constant_initializer(0.1),
@@ -72,7 +72,10 @@ def conv2d_layer(input, filters, padding="SAME", name="conv2d", pool_size=(2, 2)
                           activation=tf.nn.relu
                           )
 
-    return tf.layers.max_pooling2d(act,pool_size=pool_size, strides=stride, padding=padding)
+    if pool_size is not None:
+        return tf.layers.max_pooling2d(act,pool_size=pool_size, strides=stride, padding=padding)
+    else:
+        return act
 
 def convolutional_layers():
     """
@@ -90,10 +93,10 @@ def convolutional_layers():
     input = conv2d_layer(x_image, OUT, name="input_layer")
 
     # Second layer
-    conv1 = conv2d_layer(input, HEIGHT, pool_size=(2, 1), stride=(2, 1), name="conv_layer1")
+    conv1 = conv2d_layer(input, HEIGHT, pool_size=(2, 1), stride=(2, 1), name="conv2d_layer1")
 
     # Third layer
-    conv2 = conv2d_layer(conv1, WIDTH, name="conv_layer2")
+    conv2 = conv2d_layer(conv1, WIDTH, name="conv2d_layer2")
 
     return x, conv2
 
@@ -112,14 +115,14 @@ def get_training_model():
 
     conv_layer_flat = tf.reshape(conv_layer, [-1, 32 * 8 * WIDTH])
 
-    dense1 = dense_layer(conv_layer_flat, 2048, name="dense_layer1")
+    fc1 = fc_layer(conv_layer_flat, 2048, name="fc_layer1")
     #tf.summary.histogram('dense', dense)
 
     training = tf.placeholder(tf.bool, name="training")
-    dropout = tf.layers.dropout(dense1, rate=0.4, training=training, name="dropout")
+    dropout = tf.layers.dropout(fc1, rate=0.4, training=training, name="dropout")
     #tf.summary.histogram('dropout', dropout)
 
-    y = dense_layer(dropout, 1 + common.PLATE_LEN * len(common.CHARS), name="output_layer")
+    y = fc_layer(dropout, 1 + common.PLATE_LEN * len(common.CHARS), name="output_layer", activation=None)
 
     return (x, y, training)
 
@@ -136,14 +139,9 @@ def get_detect_model():
     x, conv_layer = convolutional_layers()
 
     # Fourth layer
-    W_fc1 = weight_variable([8 * 32 * WIDTH, 2048])
-    W_conv1 = tf.reshape(W_fc1, [8,  32, WIDTH, 2048])
-    b_fc1 = bias_variable([2048])
-    h_conv1 = tf.nn.relu(conv2d(conv_layer, W_conv1,padding="VALID") + b_fc1)
-    # Fifth layer
-    W_fc2 = weight_variable([2048, 1 + common.PLATE_LEN * len(common.CHARS)])
-    W_conv2 = tf.reshape(W_fc2, [1, 1, 2048, 1 + common.PLATE_LEN * len(common.CHARS)])
-    b_fc2 = bias_variable([1 + common.PLATE_LEN * len(common.CHARS)])
-    h_conv2 = conv2d(h_conv1, W_conv2) + b_fc2
+    conv1 = conv2d_layer(conv_layer, 2048, padding="VALID", pool_size=None)
 
-    return (x, h_conv2)
+    # Fifth layer
+    conv2 = conv2d_layer(conv1, 1 + common.PLATE_LEN * len(common.CHARS), pool_size=None)
+
+    return (x, conv2)
